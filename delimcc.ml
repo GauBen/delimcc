@@ -146,7 +146,7 @@
  with all needed modules.
 
 
- $Id: delimcc.ml,v 1.1 2017/07/11 14:20:11 oleg Exp oleg $
+ $Id: delimcc.ml,v 1.3 2018/03/08 09:08:30 oleg Exp oleg $
 
 *)
 
@@ -309,7 +309,7 @@ let[@inline never]
   let () = ptop := {pfr_mark = p.mark; pfr_ek = get_ek ()} :: (!ptop) in
   let res = body () in
   p.mbox := (fun () -> res);
-  raise DelimCCE
+  raise_notrace DelimCCE
 
 let push_prompt (p : 'a prompt) (body : unit -> 'a) : 'a =
   try
@@ -323,7 +323,7 @@ let push_prompt (p : 'a prompt) (body : unit -> 'a) : 'a =
     | _ -> dbg_fatal_error "push_prompt: empty pstack on DelimCCE")
   | e -> match !ptop with
     | h::t -> assert (h.pfr_mark == p.mark); ptop := t; 
-	dbg_note "propagating exc"; raise e
+	dbg_note "propagating exc"; raise_notrace e
     | _ -> dbg_fatal_error "push_prompt: empty pstack on other exc"
 
 (*
@@ -334,11 +334,11 @@ let push_prompt (p : 'a prompt) (body : unit -> 'a) : 'a =
 *)
 
 let push_prompt_simple (p : 'a prompt) (body : unit -> unit) : 'a =
-  try body (); raise DelimCCE
+  try body (); raise_notrace DelimCCE
   with
   | DelimCCE -> mbox_receive p
   | Out_of_memory -> dbg_fatal_error "take_subcont: out of memory"
-  | e -> dbg_note "propagating exc"; raise e
+  | e -> dbg_note "propagating exc"; raise_notrace e
 
 let take_subcont (p : 'b prompt) (f : ('a,'b) subcont -> unit -> 'b) : 'a =
   let p' = new_prompt () in
@@ -422,7 +422,7 @@ let push_subcont (sk : ('a,'b) subcont) (m : unit -> 'a) : 'b =
     push_subcont_aux sk m 			(* does not return *)
   with 
   | DelimCCE -> mbox_receive sk.subcont_pb
-  | e -> dbg_note "propagating exc1"; raise e
+  | e -> dbg_note "propagating exc1"; raise_notrace e
 
 
 (* Another optimization: push the _delimited_ continuation.
@@ -457,7 +457,7 @@ let push_delim_subcont (sk : ('a,'b) subcont) (m : unit -> 'a) : 'b =
     | _ -> dbg_fatal_error "push_delim_subcont: empty pstack on DelimCCE")
   | e -> match !ptop with
     | h::t -> assert (h.pfr_mark == sk.subcont_pb.mark); ptop := t; 
-	dbg_note "propagating exc2"; raise e
+	dbg_note "propagating exc2"; raise_notrace e
     | _ -> dbg_fatal_error "push_delim_subcont: empty pstack on other exc"
 
 

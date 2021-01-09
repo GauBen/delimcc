@@ -31,7 +31,7 @@
 # This Makefile is based on the one included in the callcc distribution
 # by Xavier Leroy
 #
-# $Id: Makefile,v 1.6 2006/02/07 00:33:52 oleg Exp $
+# $Id: Makefile,v 1.4 2020/10/08 13:49:52 oleg Exp oleg $
 
 # To compile the library, we need a few files that are not normally
 # installed by the OCaml distribution.
@@ -41,37 +41,40 @@
 # That copy corresponds to the ia32 (x86) platform. For other platforms,
 # you really need a configured OCaml distribution.
 
+#OCAMLINCLUDES=-I../../byterun
+#OCAMLINCLUDES=-I./ocaml-byterun-3.09
+#OCAMLINCLUDES=-I./ocaml-byterun-3.10
+#OCAMLINCLUDES=-I./ocaml-byterun-3.11
+# for OCaml 4.04+
+OCAMLINCLUDES=
+# Directory of your OCAML executables...
+#OCAMLBIN=../../bin
+OCAMLBIN := $(shell dirname `which ocaml`)
+OCAMLC=$(OCAMLBIN)/ocamlc
 LIBDIR := $(shell ocamlc -where)
-
-# Richard Mortier <mort@cantab.net>, 2013-03-19
-#
-# simplify tool discovery
-
-OCAMLC=ocamlc
 
 # The following Makefile.config will set ARCH, MODEL, SYSTEM
 include $(LIBDIR)/Makefile.config
 
-OCAMLOPT=ocamlopt
-OCAMLTOP=ocaml
-OCAMLMKLIB=ocamlmklib
-OCAMLMKTOP=ocamlmktop
-OCAMLFIND=ocamlfind
+# CFLAGS=$(FLAGS) -O $(NATIVECCCOMPOPTS)
+# DFLAGS=$(FLAGS) -g -DDEBUG $(NATIVECCCOMPOPTS)
 
+OCAMLOPT=$(OCAMLBIN)/ocamlopt -verbose
+OCAMLTOP=$(OCAMLBIN)/ocaml
+OCAMLMKLIB=$(OCAMLBIN)/ocamlmklib -v
+OCAMLMKTOP=$(OCAMLBIN)/ocamlmktop
+OCAMLFIND=$(OCAMLBIN)/ocamlfind
 OCAMLFIND_INSTFLAGS=
 DESTDIR=
-
 STDINCLUDES=$(LIBDIR)/caml
 STUBLIBDIR=$(LIBDIR)/stublibs
+# CC=$(NATIVECC)
+# When using GCC 4.7, add the flag -fno-ipa-sra
+# Actually, now stacks-native.c has the appropriate attributes that prevent
+# the dangerous optimizations. So, no special flags are needed.
+#CC=gcc -fno-ipa-sra
 CC=gcc
-CFLAGS+=-fPIC -Wall -I$(STDINCLUDES)
-
-# Disable optimization for GCC >= 4.7
-GCC_VERSION=$(shell gcc -dumpversion)
-ifeq "4.7" "$(word 2, $(sort 4.7 $(GCC_VERSION)))"
-	CFLAGS+=-O2
-endif
-
+CFLAGS=-fPIC -Wall $(OCAMLINCLUDES) -I$(STDINCLUDES) -O2
 NATIVEFLAGS=-DCAML_NAME_SPACE -DNATIVE_CODE \
        -DTARGET_$(ARCH) -DSYS_$(SYSTEM)
 RANLIB=ranlib
@@ -79,21 +82,16 @@ RANLIB=ranlib
 
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .tex .pdf
 
-all: libdelimcc.a delimcc.cma
-opt: libdelimccopt.a delimcc.cmxa
+all: delimcc.cma
+opt: delimccopt.cmxa
 
-libdelimcc.a: stacks.o delim_serialize.o
-	$(OCAMLMKLIB) -oc delimcc -dllpath . stacks.o delim_serialize.o
+delimcc.cma: delimcc.cmo stacks.o delim_serialize.o
+	$(OCAMLMKLIB) -o delimcc -oc delimcc \
+	delimcc.cmo stacks.o delim_serialize.o
 
-delimcc.cma: delimcc.cmo
-	$(OCAMLMKLIB) -o delimcc -oc delimcc -dllpath . delimcc.cmo
-
-libdelimccopt.a: stacks-native.o delim_serialize.o
-	$(OCAMLMKLIB) -oc delimccopt -dllpath . \
-	stacks-native.o delim_serialize.o
-
-delimcc.cmxa: delimcc.cmx
-	$(OCAMLMKLIB) -o delimcc -oc delimccopt -dllpath .  delimcc.cmx
+delimccopt.cmxa: delimcc.cmx stacks-native.o delim_serialize.o
+	$(OCAMLMKLIB) -o delimccopt -oc delimccopt \
+	delimcc.cmx stacks-native.o delim_serialize.o
 
 install:
 	if test -f dlldelimcc.so; then cp dlldelimcc.so $(STUBLIBDIR); fi
@@ -105,10 +103,10 @@ install:
 	if test -f libdelimccopt.a;  then \
 	  cp libdelimccopt.a $(LIBDIR); \
 	  cd $(LIBDIR) && $(RANLIB) libdelimccopt.a; fi
-	if test -f delimcc.cmxa; then cp delimcc.cmxa $(LIBDIR); fi
+	if test -f delimccopt.cmxa; then cp delimccopt.cmxa $(LIBDIR); fi
 
 findlib-install: META dlldelimcc.so libdelimcc.a delimcc.cma delimcc.cmi \
-	dlldelimccopt.so libdelimccopt.a delimcc.cmxa delimcc.cmx delimcc.a delimcc.mli
+	dlldelimccopt.so libdelimccopt.a delimccopt.a delimccopt.cmxa
 	$(OCAMLFIND) install $(OCAMLFIND_INSTFLAGS) delimcc $^
 
 
@@ -119,29 +117,31 @@ findlib-install: META dlldelimcc.so libdelimcc.a delimcc.cma delimcc.cmi \
 .ml.cmx:
 	$(OCAMLOPT) -c $<
 
-delimcc.cmx: delimcc.cmi
 delimcc.cmo: delimcc.cmi
+delimcc.cmx: delimcc.cmi
+	$(OCAMLOPT) -opaque -c delimcc.ml
 
-# When using GCC 4.7, add the flag -fno-ipa-sra
+# When using GCC 4.7, add the flag -fno-ipa-sra (but it is no longer needed...)
 stacks-native.o: stacks-native.c
-	$(CC) -c $(NATIVEFLAGS) $(CFLAGS) stacks-native.c
+	$(CC) -c $(NATIVEFLAGS) -O2 -fPIC -Wall \
+	$(OCAMLINCLUDES) -I$(STDINCLUDES) stacks-native.c
 
 top:	libdelimcc.a delimcc.cma
 	$(OCAMLMKTOP) -o ocamltopcc delimcc.cma
 
 .PRECIOUS: testd0
 testd0: libdelimcc.a testd0.ml delimcc.cmi
-	$(OCAMLC) -o $@ -dllpath . delimcc.cma $@.ml
+	$(OCAMLC) -o $@ delimcc.cma $@.ml
 	./testd0
 
 testd0opt: libdelimccopt.a testd0.ml delimcc.cmi
-	$(OCAMLOPT) -o $@ -cclib -L. delimcc.cmxa  testd0.ml
+	$(OCAMLOPT) -o $@ -noautolink delimccopt.cmxa libdelimccopt.a testd0.ml
 	./testd0opt
 
 # serialization test
 .PRECIOUS: tests0
 tests0: libdelimcc.a tests0.ml delimcc.cmi
-	$(OCAMLC) -o $@ -dllpath . delimcc.cma $@.ml
+	$(OCAMLC) -o $@ delimcc.cma $@.ml
 	./$@
 	./$@ /tmp/k1
 
@@ -154,15 +154,15 @@ clean::
 
 clean::
 	rm -f delimcc.a delimcc.cma libdelimcc.a dlldelimcc.so \
-	delimcc.cmxa libdelimccopt.a dlldelimccopt.so
+	delimccopt.cmxa libdelimccopt.a dlldelimccopt.so
 
 
 memory%: libdelimcc.a memory%.ml  delimcc.cmi
-	$(OCAMLC) -o $@ -dllpath . delimcc.cma $@.ml
+	$(OCAMLC) -o $@  delimcc.cma $@.ml
 	./$@ > /dev/null
 
 memory%opt: libdelimccopt.a memory%.ml delimcc.cmi
-	$(OCAMLOPT) -o $@ -cclib -L. delimcc.cmxa memory$*.ml
+	$(OCAMLOPT) -o $@ delimccopt.cmxa memory$*.ml
 	./$@ > /dev/null
 
 %: libdelimcc.a %.ml delimcc.cmi
@@ -170,7 +170,7 @@ memory%opt: libdelimccopt.a memory%.ml delimcc.cmi
 	./$@
 
 %opt: libdelimccopt.a %.ml delimcc.cmi
-	$(OCAMLOPT) -o $@ -cclib -L. delimcc.cmxa $*.ml
+	$(OCAMLOPT) -o $@  delimccopt.cmxa $*.ml
 	./$@
 
 sieve: libdelimcc.a lwc.cmi lwc.ml sieve.ml
@@ -178,7 +178,7 @@ sieve: libdelimcc.a lwc.cmi lwc.ml sieve.ml
 	./$@
 
 sieveopt: libdelimccopt.a lwc.cmi lwc.ml sieve.ml
-	$(OCAMLOPT) -o $@ -cclib -L. unix.cmxa delimcc.cmxa lwc.ml sieve.ml
+	$(OCAMLOPT) -o $@ unix.cmxa delimccopt.cmxa lwc.ml sieve.ml
 	./$@
 
 clean::

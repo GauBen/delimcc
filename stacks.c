@@ -55,7 +55,7 @@
   native-code OCaml, see stacks-native.c. See the latter file for
   justification.
 
-  $Id: stacks.c,v 1.2 2018/02/26 05:31:12 oleg Exp oleg $
+  $Id: stacks.c,v 1.3 2018/05/25 12:57:10 oleg Exp oleg $
 
  *------------------------------------------------------------------------
  */
@@ -372,7 +372,10 @@ value size_stack_fragment(const value ekfragment)
 value dbg_fatal_error(const value message)
 {
   myassert(Is_block(message) && Tag_val(message) == String_tag);
-  caml_fatal_error(String_val(message));
+  /* Used to be caml_fatal_error. See correspondence with 
+     Sebastien.Hinderer@inria.fr, May 25, 2018 */
+  fprintf (stderr, "%s\n", String_val(message));
+  exit(2);
   return Val_unit;		/* Doesn't return, actually */
 }
 

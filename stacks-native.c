@@ -150,7 +150,17 @@ present code is safe to compile with optimizations on.
 /* For debugging */
 #include <stdio.h>
 
+/* Prior to 4.10 we used the following function */
+#if 0
 extern void caml_raise_exception (const value bucket) Noreturn;
+#endif
+/* but now it takes the extra argument, the caml_state. Luckily,
+   there is a new function with the old interface, which also
+   does some clean-up.
+   So we should use it.
+*/
+extern void caml_raise (const value bucket) Noreturn;
+#define RAISE(exc) caml_raise(exc)
 
 
 /* Assuming p is the pointer to the trap stack frame, return
@@ -178,8 +188,11 @@ extern void caml_raise_exception (const value bucket) Noreturn;
 Before, I had
    #define Highest_stack_addr ((value*)(-1024))
 Now, the it seems the top of stack is available...
+  #define Highest_stack_addr ((value*)caml_top_of_stack)
+BUT! It seems not constant, and hence not suitable for offsets!
+Retracking
 */
-#define Highest_stack_addr ((value*)caml_top_of_stack)
+#define Highest_stack_addr ((value*)(-1024))
 
 /* Under no circumstances EVER EVER EVER should assert be disabled!!! */
 
@@ -653,7 +666,7 @@ value reset_trapsp(const value val_ek, const value delimcc_exc)
 
 value reset_trapsp(const value val_ek, const value delimcc_exc)
 {
-  char * const tp = (char *)(Highest_stack_addr - (ptrdiff_t)Long_val(val_ek));;
+  char * const tp = (char *)(Highest_stack_addr - (ptrdiff_t)Long_val(val_ek));
   const char *p;
 
 #if defined(DEBUG) && DEBUG
@@ -677,7 +690,7 @@ value reset_trapsp(const value val_ek, const value delimcc_exc)
     }
       
   caml_exception_pointer = tp;		/* Reset the chain */
-  caml_raise_exception(delimcc_exc);    /* does not return */
+  RAISE(delimcc_exc);    /* does not return */
 }
 
 
@@ -878,7 +891,6 @@ value push_stack_fragment(const value ekfragment, const value delimcc_exc)
   ekfragment_t ekp;
   const char * frag_bottom;
   const frame_descr * fdtop = find_frame(caml_exception_pointer);
-  char *p;
 
   /*   myassert(Is_block(ekfragment) && Tag_val(ekfragment) == Custom_tag); */
 
@@ -894,10 +906,22 @@ value push_stack_fragment(const value ekfragment, const value delimcc_exc)
 #endif
 
   /* Can't check for stack overflow.... */
-  p = alloca(size);
-  push_stack_fragment_really(ekp, p, fdtop, delimcc_exc);
-  /* should not be tail recursive, to keep the alloca-ted space */
+  {
+    char p[size];    /* Variable-size array! Allowed in C99 */
+                     /* Should have the effect of p = alloca(size); */
 
+    push_stack_fragment_really(ekp, p, fdtop, delimcc_exc);
+    /* should not be tail recursive, to keep the alloca-ted space */
+    /* The array p will we reclaimed at this point. But we don't care since
+        push_stack_fragment_really doesn't return
+    */
+  
+  }
+  /* The following function should not be called: push_stack_fragment_really
+     raises the exception. This function is called to prevent
+     the tail call to push_stack_fragment_really
+  */
+  exit(129);
   return Val_unit;
 }
 
@@ -913,6 +937,9 @@ static void push_stack_fragment_really(ekfragment_t ekp,
      because we just found its frametable, fdtop.
   */
   char * const new_trapsp = caml_exception_pointer - size;
+
+  *reserved_area = '\0'; /* To let the C compiler know we really use the area
+                            reserved_area is not a dead variable! */
 
   memcpy(new_trapsp,frag_bottom,size);
 
@@ -940,7 +967,7 @@ static void push_stack_fragment_really(ekfragment_t ekp,
   print_stack_trace("push_stack_fragment: after");
 #endif
 
-  caml_raise_exception(delimcc_exc); /* does not return */
+  RAISE(delimcc_exc); /* does not return */
 }
 
 
@@ -968,7 +995,10 @@ value size_stack_fragment(const value ekfragment)
 value dbg_fatal_error(const value message)
 {
   myassert(Is_block(message) && Tag_val(message) == String_tag);
-  caml_fatal_error(String_val(message));
+  /* Used to be caml_fatal_error. See correspondence with 
+     Sebastien.Hinderer@inria.fr, May 25, 2018 */
+  fprintf (stderr, "%s\n", String_val(message));
+  exit(2);
   return Val_unit;		/* Doesn't return, actually */
 }
 

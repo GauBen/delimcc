@@ -94,19 +94,19 @@ let bench testf =
 
 let () = 
   Printf.printf "test1_ex\n\n";
-  bench (fun () -> test1_ex (make_test_data 110000));;
+  bench (fun () -> test1_ex (make_test_data 100000));;
 
 let () = 
   Printf.printf "test1_abort\n\n";
-  bench (fun () -> test1_abort (make_test_data 110000));;
+  bench (fun () -> test1_abort (make_test_data 100000));;
 
 let () = 
   Printf.printf "test2_ex\n\n";
-  bench (fun () -> test2_ex (make_test_data 110000));;
+  bench (fun () -> test2_ex (make_test_data 100000));;
 
 let () = 
   Printf.printf "test2_abort\n\n";
-  bench (fun () -> test2_abort (make_test_data 110000));;
+  bench (fun () -> test2_abort (make_test_data 100000));;
 
 (* The median result of 5 runs:
 OCaml 3.12
