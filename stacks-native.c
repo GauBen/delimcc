@@ -1002,10 +1002,17 @@ value dbg_fatal_error(const value message)
   return Val_unit;		/* Doesn't return, actually */
 }
 
+#if defined(DEBUG) && DEBUG
 value dbg_note(const value message)
 {
   myassert(Is_block(message) && Tag_val(message) == String_tag);
   fprintf(stderr,"%s\n",String_val(message));
   return Val_unit;
 }
+#else
+value dbg_note(const value message)
+{
+  return Val_unit;
+}
+#endif
 
